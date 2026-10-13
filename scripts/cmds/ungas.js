@@ -32,7 +32,7 @@ module.exports = {
     author: "Siegfried Samá",
     countDown: 0,
     role: 0,
-    description: { en: "ungas na jm 😂" },
+    description: { en: "ungas na jm😂" },
     category: "fun",
     guide: { en: "{pn}" }
   },
