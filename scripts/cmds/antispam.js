@@ -2,16 +2,16 @@ const spamTracker = new Map();
 const SPAM_LIMIT = 5;
 
 const SPAM_ROASTS = [
-  "Hoy [name], sino nagturo sayo mag-spam? Bobo ka ba talaga o nagpapanggap lang? 🤡",
-  "Grabe [name], ang dami mong pinagsasabi wala naman kwenta. Spam King ng Basura! 🗑️",
-  "[name] AmpUta ka, paulit-ulit ka na parang broken record. Kick ka na! 🥊",
-  "Huy [name]! Keyboard warrior ka ba? Sa spam ka lang matapang. Bye na! 😂",
-  "[name] tangang spammer, wala ka bang ibang magawa sa buhay mo? 🤪",
-  "Ayan na [name], natagpuan mo na ang speciality mo — pag-aaral ng SPAM. Loser! 😹",
-  "[name] Bobo ka ba? Sampung beses na parehong mensahe. Saan ka nag-aral? 🤢",
-  "Grabe [name], kahit basura may kwenta pa. Ikaw? Puro spam lang. Kick na! 🥊",
-  "[name] Hahaha kawawa ka naman, wala kang ibang magawa kundi mag-spam. Pathetic! 😂",
-  "[name] Tawag Ka Ng Amo Mo Gago! Alis na dito! 🖕"
+  "kick ka sakin tanga [name] sino nagturo sayo magspam?🙄",
+  "spam pa bobo [name] kick ka sakin 👍🏿",
+  "[name] kick kita, napaka bobo mong spammer ka 🙄",
+  "kick ka sakin tanga [name] sino nagturo sayo magspam? 🙄",
+  "[name] tangang spammer, wala ka bang ibang magawa sa buhay mo? 🙄",
+  "[name] kick kita, napaka bobo mong spammer ka 🙄",
+  "[name] bobo ka ba? spam pa 👍🏿",
+  "kick ka sakin [name] bobo, spammer ka nanga di mo pa ako susupain 😭",
+  "kick ka sakin tanga [name] sino nagturo sayo magspam?🙄",
+  "[name] alis ka dito spammer, supain mo nalang boss sieg 😭"
 ];
 
 function getRandom(arr) {
