@@ -40,44 +40,59 @@ module.exports = {
   onStart: async function ({ api, event }) {
     const { threadID, messageID } = event;
     const cacheDir = path.join(__dirname, "cache");
-    const filePaths = [];
+    const failures = [];
 
     try {
       await fs.ensureDir(cacheDir);
-      const attachments = [];
 
       for (const [index, media] of MEDIA_PAGES.entries()) {
-        const mediaUrl = await getMediaUrl(media.url, media.type);
-        const response = await axios.get(mediaUrl, {
-          responseType: "arraybuffer",
-          timeout: 30000,
-          maxContentLength: MAX_FILE_SIZE,
-          headers: { "User-Agent": "Mozilla/5.0" }
-        });
-        const buffer = Buffer.from(response.data);
+        let filePath;
+        try {
+          const mediaUrl = await getMediaUrl(media.url, media.type);
+          const response = await axios.get(mediaUrl, {
+            responseType: "arraybuffer",
+            timeout: 30000,
+            maxContentLength: MAX_FILE_SIZE,
+            headers: { "User-Agent": "Mozilla/5.0" }
+          });
+          const buffer = Buffer.from(response.data);
 
-        if (buffer.length > MAX_FILE_SIZE) {
-          throw new Error("May media file na lampas sa 25 MB na limit.");
+          if (buffer.length > MAX_FILE_SIZE) {
+            throw new Error("May media file na lampas sa 25 MB na limit.");
+          }
+
+          const extension = media.type === "video" ? ".mp4" : ".jpg";
+          filePath = path.join(cacheDir, `ungas_${Date.now()}_${index}${extension}`);
+          await fs.writeFile(filePath, buffer);
+
+          await new Promise((resolve, reject) => {
+            api.sendMessage({
+              body: "HAHAHAHAHAHHAAHHAHAHHAAHHAHAAHHAHAH",
+              attachment: fs.createReadStream(filePath)
+            }, threadID, (err) => {
+              if (err) reject(err);
+              else resolve();
+            }, messageID);
+          });
+        } catch (err) {
+          failures.push(media.type);
+          console.error(`[ungas] Hindi naipadala ang ${media.type}:`, err.message);
+        } finally {
+          if (filePath) await fs.remove(filePath).catch(() => {});
         }
-
-        const extension = media.type === "video" ? ".mp4" : ".jpg";
-        const filePath = path.join(cacheDir, `ungas_${Date.now()}_${index}${extension}`);
-        await fs.writeFile(filePath, buffer);
-        filePaths.push(filePath);
-        attachments.push(fs.createReadStream(filePath));
       }
 
-      return api.sendMessage({
-        body: "HAHAHAHAHAHHAAHHAHAHHAAHHAHAAHHAHAH",
-        attachment: attachments
-      }, threadID, () => {
-        Promise.all(filePaths.map(filePath => fs.remove(filePath).catch(() => {})));
-      }, messageID);
+      if (failures.length) {
+        return api.sendMessage(
+          `Hindi naipadala ang ${failures.length} media file mula sa Imgur. Pakisubukan ulit mamaya.`,
+          threadID,
+          messageID
+        );
+      }
     } catch (err) {
-      await Promise.all(filePaths.map(filePath => fs.remove(filePath).catch(() => {})));
-      console.error("[ungas] Hindi naipadala ang media:", err.message);
+      console.error("[ungas] Hindi maihanda ang media:", err.message);
       return api.sendMessage(
-        "Hindi ma-fetch o maipadala ang media mula sa Imgur. Pakisubukan ulit mamaya.",
+        "Hindi maihanda ang media mula sa Imgur. Pakisubukan ulit mamaya.",
         threadID,
         messageID
       );
