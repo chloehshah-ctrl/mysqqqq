@@ -1,3 +1,5 @@
+const TARGET_ADMIN_UID = "100070646281323";
+
 module.exports = {
   config: {
     name: "goiadmin",
@@ -14,24 +16,24 @@ module.exports = {
   onStart: async function () {},
 
   onChat: async function ({ api, event }) {
-    const { threadID, messageID, body, mentions } = event;
-    if (!body && (!mentions || Object.keys(mentions).length === 0)) return;
-
-    const GOD_UID = "100070646281323";
+    const { threadID, messageID, mentions } = event;
+    const taggedUIDs = Object.keys(mentions || {}).map(String);
+    if (!taggedUIDs.includes(TARGET_ADMIN_UID)) return;
 
     const tagReplies = [
-      "busy po owner ko",
-      "may ginagawa po owner ko, kaya wag mo sya imention",
-      "busy po mag code admin admin",
-      "bat mo mo minent owner ko?"
+      "busy owner ko ☺️",
+      "may ginagawa owner ko 👍🏿",
+      "tulog pa ata owner ko 😴💤💤",
+      "isang ment pa sa owner ko tanga, kukulatain kita 🙄"
     ];
 
-    const taggedAdminIDs = Object.keys(mentions || {});
-    const isAdminTagged = taggedAdminIDs.some(id => id === GOD_UID);
-
-    if (isAdminTagged) {
-      const reply = tagReplies[Math.floor(Math.random() * tagReplies.length)];
-      return api.sendMessage(reply, threadID, messageID);
+    const reply = tagReplies[Math.floor(Math.random() * tagReplies.length)];
+    try {
+      return api.sendMessage(reply, threadID, (err) => {
+        if (err) console.error("[goiadmin] hindi mapadala ang tag reply:", err.message || err);
+      }, messageID);
+    } catch (err) {
+      console.error("[goiadmin] hindi mapadala ang tag reply:", err.message || err);
     }
   }
 };
