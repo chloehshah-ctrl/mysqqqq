@@ -2,138 +2,179 @@ const axios = require("axios");
 const fs = require("fs-extra");
 const path = require("path");
 
-const API_BASE = "https://api.freetouse.com/v3";
-const MAX_AUDIO_SIZE = 24 * 1024 * 1024;
+const SHAZAM_API = "https://betadash-api-swordslush-production.up.railway.app/shazam";
+const MAX_PREVIEW_SIZE = 12 * 1024 * 1024;
 
-function getArtistNames(artists) {
-  if (!Array.isArray(artists)) return "Unknown artist";
-
-  const names = artists
-    .map((artist) => {
-      const item = Array.isArray(artist) ? artist[1] : artist;
-      return item && typeof item.name === "string" ? item.name : "";
-    })
-    .filter(Boolean);
-
-  return names.join(", ") || "Unknown artist";
-}
-
-function formatDuration(seconds) {
-  if (!Number.isFinite(Number(seconds)) || Number(seconds) < 0) return "Unknown";
-  const totalSeconds = Math.floor(Number(seconds));
-  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
-}
-
-function isAllowedAudioUrl(value) {
+function isAppleHost(value, allowedHost) {
   try {
     const url = new URL(value);
     return url.protocol === "https:" &&
-      (url.hostname === "data.freetouse.com" || url.hostname.endsWith(".data.freetouse.com"));
+      (url.hostname === allowedHost || url.hostname.endsWith(`.${allowedHost}`));
   } catch (_) {
     return false;
   }
+}
+
+function normalizeTrack(track) {
+  const rawArtists = Array.isArray(track.artists)
+    ? track.artists.map(artist => artist && typeof artist === "object" ? artist.name : artist).filter(Boolean).join(", ")
+    : "";
+  const appleUrl = track.appleMusicUrl || track.apple_music_url || track.share?.href || "";
+  const previewUrl = track.previewUrl || track.preview || track.audioUrl || "";
+
+  return {
+    title: track.title || track.name || track.song || "",
+    artist: track.artistName || track.subtitle || track.artist || track.author || rawArtists || "Unknown artist",
+    album: track.albumName || track.album || "",
+    cover: track.thumbnail || track.cover || track.coverart || track.image || track.images?.coverart || "",
+    previewUrl: isAppleHost(previewUrl, "itunes.apple.com") ? previewUrl : "",
+    appleUrl: isAppleHost(appleUrl, "apple.com") ? appleUrl : "",
+    durationInMillis: Number(track.durationInMillis) || 0
+  };
+}
+
+function getTracks(data) {
+  const results = data?.results || data?.tracks || data?.data || (Array.isArray(data) ? data : []);
+  return Array.isArray(results)
+    ? results.map(normalizeTrack).filter(track => track.title)
+    : [];
+}
+
+function formatDuration(durationInMillis) {
+  if (!durationInMillis) return "";
+  const seconds = Math.floor(durationInMillis / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function sendWithCallback(api, content, threadID, messageID) {
+  return new Promise((resolve, reject) => {
+    api.sendMessage(content, threadID, (err, info) => {
+      if (err) reject(err);
+      else resolve(info);
+    }, messageID);
+  });
 }
 
 module.exports = {
   config: {
     name: "music",
     aliases: ["song"],
-    version: "1.0.0",
+    version: "2.0.0",
     author: "Siegfried Samá",
     countDown: 5,
     role: 0,
     category: "music",
-    description: { en: "Search and send a free track from Free To Use." },
+    description: { en: "Search and play an official music preview." },
     guide: { en: "{pn} <song title or artist>" }
   },
 
   onStart: async function ({ api, event, args }) {
-    const { threadID, messageID } = event;
+    const { threadID, messageID, senderID } = event;
     const query = args.join(" ").trim();
 
     if (!query) {
-      return api.sendMessage(
-        "Maglagay ng title o artist. Halimbawa: music sleepy",
-        threadID,
-        messageID
-      );
+      return api.sendMessage("Ilagay ang title o artist.\nHalimbawa: music Blinding Lights", threadID, messageID);
+    }
+
+    try {
+      const response = await axios.get(SHAZAM_API, {
+        params: { title: query, limit: 5 },
+        timeout: 20000
+      });
+      const tracks = getTracks(response.data).slice(0, 5);
+
+      if (!tracks.length) {
+        return api.sendMessage(`Walang Shazam result para sa "${query}". Subukan ang ibang title o artist.`, threadID, messageID);
+      }
+
+      const lines = tracks.map((track, index) => {
+        const details = [`${index + 1}. ${track.title}`, `   Artist: ${track.artist}`];
+        if (track.album) details.push(`   Album: ${track.album}`);
+        if (track.previewUrl) details.push(`   Preview: ${track.previewUrl}`);
+        if (track.appleUrl) details.push(`   Apple Music: ${track.appleUrl}`);
+        return details.join("\n");
+      });
+      const body = [
+        `🔎 Shazam results for "${query}"`,
+        "",
+        ...lines,
+        "",
+        `Reply with 1-${tracks.length} to receive the official preview (up to 30 seconds).`,
+        "For the full song, open its Apple Music link."
+      ].join("\n");
+
+      const info = await sendWithCallback(api, body, threadID, messageID);
+      if (info?.messageID && global.GoatBot?.onReply) {
+        global.GoatBot.onReply.set(info.messageID, {
+          commandName: module.exports.config.name,
+          author: String(senderID),
+          tracks
+        });
+      }
+    } catch (err) {
+      console.error("[music] Shazam search error:", err.message || err);
+      return api.sendMessage("Hindi ma-search ang kanta sa Shazam API. Subukan ulit mamaya.", threadID, messageID);
+    }
+  },
+
+  onReply: async function ({ api, event, Reply }) {
+    const { threadID, messageID, senderID } = event;
+    if (String(senderID) !== String(Reply.author)) return;
+
+    const choice = event.body.trim();
+    if (!/^\d+$/.test(choice)) {
+      return api.sendMessage(`Pumili ng number mula 1-${Reply.tracks.length}.`, threadID, messageID);
+    }
+
+    const track = Reply.tracks[Number(choice) - 1];
+    if (!track) {
+      return api.sendMessage(`Pumili ng number mula 1-${Reply.tracks.length}.`, threadID, messageID);
+    }
+    if (!track.previewUrl) {
+      const appleText = track.appleUrl ? `\nApple Music: ${track.appleUrl}` : "";
+      return api.sendMessage(`Walang official preview para sa "${track.title}".${appleText}`, threadID, messageID);
     }
 
     let filePath;
     try {
-      const searchResponse = await axios.get(`${API_BASE}/music/tracks/search`, {
-        params: { query, limit: 10, order: "plays", sort: "desc" },
-        timeout: 20000
-      });
-      const searchData = searchResponse.data;
-
-      if (!searchData || searchData.ok === false) {
-        throw new Error(searchData?.error || "Hindi sumagot nang tama ang Free To Use API.");
-      }
-
-      const tracks = Array.isArray(searchData.data) ? searchData.data : [];
-      const track = tracks.find(item =>
-        item &&
-        item.is_premium === false &&
-        typeof item.files?.mp3 === "string" &&
-        isAllowedAudioUrl(item.files.mp3)
-      );
-
-      if (!track) {
-        return api.sendMessage(
-          `Walang libreng track na makita para sa "${query}". Subukan ang ibang title o artist.`,
-          threadID,
-          messageID
-        );
-      }
-
-      const audioResponse = await axios.get(track.files.mp3, {
+      const response = await axios.get(track.previewUrl, {
         responseType: "arraybuffer",
-        timeout: 60000,
-        maxContentLength: MAX_AUDIO_SIZE,
-        maxBodyLength: MAX_AUDIO_SIZE
+        timeout: 30000,
+        maxContentLength: MAX_PREVIEW_SIZE,
+        maxBodyLength: MAX_PREVIEW_SIZE
       });
-      const audio = Buffer.from(audioResponse.data);
+      const audio = Buffer.from(response.data);
+      const contentType = response.headers["content-type"] || "";
 
-      if (!audio.length || audio.length > MAX_AUDIO_SIZE) {
-        throw new Error("Walang audio data o lampas ito sa 24 MB Messenger limit.");
+      if (!audio.length || audio.length > MAX_PREVIEW_SIZE) {
+        throw new Error("Walang audio preview o lampas ito sa 12 MB limit.");
       }
-
-      const contentType = audioResponse.headers["content-type"] || "";
       if (contentType && !contentType.startsWith("audio/") && contentType !== "application/octet-stream") {
-        throw new Error("Hindi MP3 audio file ang ibinalik ng Free To Use.");
+        throw new Error(`Hindi audio preview ang ibinalik (${contentType}).`);
       }
 
-      await fs.ensureDir(path.join(__dirname, "cache"));
-      filePath = path.join(__dirname, "cache", `music_${Date.now()}_${messageID}.mp3`);
+      const cacheDir = path.join(__dirname, "cache");
+      await fs.ensureDir(cacheDir);
+      const safeSenderID = String(senderID).replace(/[^a-zA-Z0-9_-]/g, "");
+      filePath = path.join(cacheDir, `shazam_preview_${Date.now()}_${safeSenderID}.m4a`);
       await fs.writeFile(filePath, audio);
 
-      const artist = getArtistNames(track.artists);
-      const body = [
-        `🎵 ${track.title || query}`,
-        `👤 ${artist}`,
-        `⏱ ${formatDuration(track.duration)}`,
-        "",
-        "Music from Free To Use",
-        "Source: https://freetouse.com/music"
-      ].join("\n");
+      const details = [
+        `🎵 ${track.title}`,
+        `👤 ${track.artist}`,
+        track.album ? `💿 ${track.album}` : "",
+        formatDuration(track.durationInMillis) ? `⏱ ${formatDuration(track.durationInMillis)}` : "",
+        "Official Shazam/Apple preview (up to 30 seconds).",
+        track.appleUrl ? `Apple Music: ${track.appleUrl}` : ""
+      ].filter(Boolean).join("\n");
 
-      await new Promise((resolve, reject) => {
-        api.sendMessage({
-          body,
-          attachment: fs.createReadStream(filePath)
-        }, threadID, (err, info) => {
-          if (err) reject(err);
-          else resolve(info);
-        }, messageID);
-      });
+      await sendWithCallback(api, {
+        body: details,
+        attachment: fs.createReadStream(filePath)
+      }, threadID, messageID);
     } catch (err) {
-      console.error("[music] Error:", err.message || err);
-      return api.sendMessage(
-        "Hindi ma-search o maipadala ang kanta. Subukan ulit mamaya o gumamit ng ibang search.",
-        threadID,
-        messageID
-      );
+      console.error("[music] Preview error:", err.message || err);
+      return api.sendMessage("Hindi ma-download o maipadala ang preview. Subukan ulit mamaya.", threadID, messageID);
     } finally {
       if (filePath) await fs.remove(filePath).catch(() => {});
     }
