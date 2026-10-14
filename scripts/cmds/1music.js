@@ -84,7 +84,7 @@ module.exports = {
       const tracks = getTracks(response.data).slice(0, 5);
 
       if (!tracks.length) {
-        return api.sendMessage(`Walang Shazam result para sa "${query}". Subukan ang ibang title o artist.`, threadID, messageID);
+        return api.sendMessage(`Walang Music result para sa "${query}". Subukan ang ibang title o artist.`, threadID, messageID);
       }
 
       const lines = tracks.map((track, index) => {
@@ -95,7 +95,7 @@ module.exports = {
         return details.join("\n");
       });
       const body = [
-        `🔎 Shazam results for "${query}"`,
+        `🔎 Music results for "${query}"`,
         "",
         ...lines,
         "",
@@ -112,8 +112,8 @@ module.exports = {
         });
       }
     } catch (err) {
-      console.error("[music] Shazam search error:", err.message || err);
-      return api.sendMessage("Hindi ma-search ang kanta sa Shazam API. Subukan ulit mamaya.", threadID, messageID);
+      console.error("[music] search error:", err.message || err);
+      return api.sendMessage("Hindi ma-search ang kanta sa Music API. Subukan ulit mamaya.", threadID, messageID);
     }
   },
 
