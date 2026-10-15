@@ -27,12 +27,12 @@ async function getMediaUrl(pageUrl, type) {
 
 module.exports = {
   config: {
-    name: "ungas",
+    name: "pedo",
     version: "1.0.0",
     author: "Siegfried Samá",
     countDown: 0,
     role: 0,
-    description: { en: "ungas na jm😂" },
+    description: { en: "pedo na jm😂" },
     category: "fun",
     guide: { en: "{pn}" }
   },
