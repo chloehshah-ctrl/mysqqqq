@@ -1,175 +1,52 @@
-const axios = require('axios');
+const { GoatWrapper } = require("fca-liane-utils");
 
 module.exports = {
   config: {
-    name: "say",
-    aliases: [],
-    version: "2.0",
-    author: "ST | Sheikh Tamim",
-    countDown: 1,
+    name: "pfp",
+    aliases: ["pp"],
+    version: "1.1",
+    author: "NIB",
+    countDown: 5,
     role: 0,
-    shortDescription: "say something",
-    longDescription: "",
-    category: "Voice Generator",
+    shortDescription: "PROFILE image",
+    longDescription: "PROFILE image",
+    category: "image",
     guide: {
-      vi: "{pn} text ",
-      en: "{pn} text "
+      en: "   {pn} @tag or reply to see profile picture"
     }
   },
-  onStart: async function ({ api, message, args, event}) {
- let lng = "en"
- let say;
-    if(ln.includes(args[0])){
- lng = args[0]
- args.shift()
- say = encodeURIComponent(args.join(" "))
- } else{ say = args.join(" ")}
-      try {
-        let url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lng}&client=tw-ob&q=${say}`
-message.reply({body:"",
-attachment: await global.utils.getStreamFromURL(url)
-})
-          } catch (e) {
-console.log(e)
-message.reply(`Enter text lmao `) }
- }
+
+  langs: {
+    vi: {
+      noTag: "Bạn phải tag người bạn muốn tát"
+    },
+    en: {
+      noTag: "You must tag the person you want to get profile picture of"
+    }
+  },
+
+  onStart: async function ({ event, message, usersData }) {
+    let avt;
+    const uid1 = event.senderID;
+    const uid2 = Object.keys(event.mentions)[0];
+
+    if (event.type === "message_reply") {
+      avt = await usersData.getAvatarUrl(event.messageReply.senderID);
+    } else {
+      if (!uid2) {
+        avt = await usersData.getAvatarUrl(uid1);
+      } else {
+        avt = await usersData.getAvatarUrl(uid2);
+      }
+    }
+
+    return message.reply({
+      body: "",
+      attachment: await global.utils.getStreamFromURL(avt)
+    });
+  }
 };
-const ln = [
- "af",
- "sq",
- "ar",
- "ay",
- "eu",
- "bn",
- "bs",
- "bg",
- "my",
- "ca",
- "km",
- "ch",
- "ce",
- "hr",
- "cs",
- "da",
- "dv",
- "nl",
- "en",
- "et",
- "fi",
- "fr",
- "de",
- "el",
- "gu",
- "he",
- "hu",
- "is",
- "id",
- "it",
- "ja",
- "jv",
- "kn",
- "kr",
- "ks",
- "kk",
- "rw",
- "kv",
- "kg",
- "ko",
- "kj",
- "ku",
- "ky",
- "lo",
- "la",
- "lv",
- "lb",
- "li",
- "ln",
- "lt",
- "lu",
- "mk",
- "mg",
- "ms",
- "ml",
- "mt",
- "gv",
- "mi",
- "mr",
- "mh",
- "ro",
- "mn",
- "na",
- "nv",
- "nd",
- "ng",
- "ne",
- "se",
- "no",
- "nb",
- "nn",
- "ii",
- "oc",
- "oj",
- "or",
- "om",
- "os",
- "pi",
- "pa",
- "ps",
- "fa",
- "pl",
- "pt",
- "qu",
- "rm",
- "rn",
- "ru",
- "sm",
- "sg",
- "sa",
- "sc",
- "sr",
- "sn",
- "sd",
- "si",
- "sk",
- "sl",
- "so",
- "st",
- "nr",
- "es",
- "su",
- "sw",
- "ss",
- "sv",
- "tl",
- "ty",
- "tg",
- "ta",
- "tt",
- "te",
- "th",
- "bo",
- "ti",
- "to",
- "ts",
- "tn",
- "tr",
- "tk",
- "tw",
- "ug",
- "uk",
- "ur",
- "uz",
- "ve",
- "vi",
- "vo",
- "wa",
- "cy",
- "fy",
- "wo",
- "xh",
- "yi",
- "yo",
- "za",
- "zu",
- "nɪ",
-]
+
+// ✅ Enable No-Prefix
+const wrapper = new GoatWrapper(module.exports);
+wrapper.applyNoPrefix({ allowPrefix: true });
