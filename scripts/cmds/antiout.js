@@ -19,10 +19,10 @@ module.exports = {
 
  langs: {
  en: {
- turnedOn: "🛡️ Anti-out feature has been enabled for this group",
- turnedOff: "🛡️ Anti-out feature has been disabled for this group",
- missingPermission: "❌ Sorry boss! I couldn't add the user back.\nUser %1 might have blocked me or doesn't have messenger option enabled.",
- addedBack: "⚠️ Attention %1!\nThis group belongs to my boss!\nYou need admin clearance to leave this group!"
+ turnedOn: "✅",
+ turnedOff: "✅",
+ missingPermission: "diko maadd si ungas",
+ addedBack: "haha wag ka umalis"
  }
  },
 
