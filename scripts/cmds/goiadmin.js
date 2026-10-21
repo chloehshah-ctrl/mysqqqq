@@ -24,7 +24,7 @@ module.exports = {
       "busy owner ko ☺️",
       "may ginagawa owner ko 👍🏿",
       "tulog pa ata owner ko 😴💤💤",
-      "isang ment pa sa owner ko tanga, kukulatain kita 🙄"
+      "isang ment pa sa owner ko, kakantutin koyang bibig mo haha"
     ];
 
     const reply = tagReplies[Math.floor(Math.random() * tagReplies.length)];
