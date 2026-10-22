@@ -262,7 +262,7 @@ async function sendReply(api, text, threadID, replyToMessageID) {
 }
 
 async function handleMessage({ api, event, senderID, userMessage, replyToMessageID, imageAttachment, maxTokens = 1024 }) {
-  const { threadID } = event;
+  const { threadID, senderID } = event;
   const historyKey = `${threadID}_${senderID}`;
   let history = conversationHistory.get(historyKey) || [];
   const imageData = imageAttachment ? await getVisionImage(imageAttachment) : null;
