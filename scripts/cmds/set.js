@@ -96,11 +96,10 @@ module.exports = {
     if (title) {
       try {
         await changeGroupTitle(api, threadID, title);
-        return message.reply(`✅ Napalitan ang pangalan ng group sa: ${title}`);
       } catch (err) {
         console.error('[set] Group title update failed:', err?.message || err);
-        return message.reply(`❌ Hindi napalitan ang pangalan ng group: ${err?.message || 'may error sa API'}`);
       }
+      return;
     }
 
     const attachment = (event.messageReply?.attachments || []).find(item =>
@@ -116,10 +115,8 @@ module.exports = {
     try {
       await downloadImage(attachment.url, imagePath);
       await changeGroupPhoto(api, imagePath, threadID);
-      return message.reply('✅ Napalitan ang group photo.');
     } catch (err) {
       console.error('[set] Group photo update failed:', err?.message || err);
-      return message.reply(`❌ Hindi napalitan ang group photo: ${err?.message || 'may error sa API'}`);
     } finally {
       await fs.remove(imagePath).catch(() => {});
     }
