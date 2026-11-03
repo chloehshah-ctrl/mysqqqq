@@ -12,13 +12,45 @@ function isBotAdmin(senderID) {
   return adminList.some(id => String(id) === String(senderID));
 }
 
+function callApiMethod(api, method, args) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = err => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve();
+    };
+    const timer = setTimeout(() => finish(new Error(`${method} timed out`)), 15000);
+
+    try {
+      const result = api[method](...args, finish);
+      if (result && typeof result.then === 'function') {
+        result.then(() => finish(), finish);
+      } else if (api[method].length <= args.length) {
+        // Resolve methods that do not accept a callback.
+        finish();
+      }
+    } catch (err) {
+      finish(err);
+    }
+  });
+}
+
 async function changeGroupTitle(api, threadID, title) {
-  if (typeof api.changeThreadTitle === 'function') {
-    await api.changeThreadTitle(title, threadID);
-    return;
-  }
-  if (typeof api.changeThreadName === 'function') {
-    await api.changeThreadName(threadID, title);
+  // setTitle is the FCA method used elsewhere in this repo (including
+  // the thread-name protection handler); wait for its callback/result.
+  const methods = [
+    { name: 'setTitle', args: [title, threadID] },
+    { name: 'changeThreadTitle', args: [title, threadID] },
+    { name: 'changeThreadName', args: [threadID, title] },
+    { name: 'setThreadName', args: [threadID, title] }
+  ];
+
+  for (const { name, args } of methods) {
+    if (typeof api[name] !== 'function') continue;
+    await callApiMethod(api, name, args);
     return;
   }
   throw new Error('Walang available na API para palitan ang pangalan ng group.');
@@ -76,7 +108,7 @@ async function downloadImage(url, filePath) {
 module.exports = {
   config: {
     name: 'set',
-    version: '1.0.0',
+    version: '1.0.1',
     author: 'Siegfried Samá',
     countDown: 5,
     role: 2,
