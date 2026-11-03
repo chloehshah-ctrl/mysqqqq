@@ -53,19 +53,21 @@ async function changeGroupTitle(api, threadID, title) {
   throw new Error('Walang available na API para palitan ang pangalan ng group.');
 }
 
-async function changeGroupPhoto(api, imageBuffer, threadID) {
-  // @dongdev/fca-unofficial expects (image, threadID, callback).
-  // Pass the image bytes directly instead of a ReadStream, which is not
-  // handled consistently by the installed FCA client.
-  if (typeof api.changeGroupImage === 'function') {
-    await callApiMethod(api, 'changeGroupImage', [imageBuffer, threadID], 30000);
-    return;
+async function changeGroupPhoto(api, imagePath, threadID) {
+  // The installed FCA client expects a ReadableStream, thread ID, then callback.
+  const method = typeof api.changeGroupImage === 'function'
+    ? 'changeGroupImage'
+    : typeof api.changeThreadImage === 'function'
+      ? 'changeThreadImage'
+      : null;
+  if (!method) throw new Error('Walang changeGroupImage method ang FCA API na naka-install.');
+
+  const imageStream = fs.createReadStream(imagePath);
+  try {
+    await callApiMethod(api, method, [imageStream, threadID], 30000);
+  } finally {
+    imageStream.destroy();
   }
-  if (typeof api.changeThreadImage === 'function') {
-    await callApiMethod(api, 'changeThreadImage', [imageBuffer, threadID], 30000);
-    return;
-  }
-  throw new Error('Walang changeGroupImage/changeThreadImage method ang FCA API na naka-install.');
 }
 
 async function downloadImage(url, filePath) {
@@ -90,13 +92,12 @@ async function downloadImage(url, filePath) {
   if (imageBuffer.length > MAX_IMAGE_BYTES) throw new Error('Lampas 8 MB ang image.');
 
   await fs.writeFile(filePath, imageBuffer);
-  return imageBuffer;
 }
 
 module.exports = {
   config: {
     name: 'set',
-    version: '1.0.2',
+    version: '1.0.3',
     author: 'Siegfried Samá',
     countDown: 5,
     role: 2,
@@ -132,10 +133,10 @@ module.exports = {
     }
 
     await fs.ensureDir(CACHE_DIR);
-    const imagePath = path.join(CACHE_DIR, `set_group_photo_${threadID}_${Date.now()}.img`);
+    const imagePath = path.join(CACHE_DIR, `set_group_photo_${threadID}_${Date.now()}.jpg`);
     try {
-      const imageBuffer = await downloadImage(attachment.url, imagePath);
-      await changeGroupPhoto(api, imageBuffer, threadID);
+      await downloadImage(attachment.url, imagePath);
+      await changeGroupPhoto(api, imagePath, threadID);
       // Silent on success, as requested.
     } catch (err) {
       console.error('[set] Group photo update failed:', err?.stack || err);
