@@ -1,15 +1,15 @@
 const savedThreadNames = new Map();
 
 const NAME_ROASTS = [
-  "Hoy [name]! Sino nagsabi sayo na pwede kang magpalit ng pangalan ng group? Alis! 🤡",
-  "[name] AmpUta, kapal ng mukha mo magpalit ng pangalan ng group namin. Bye! 🥊",
-  "Grabe [name], feeling admin ka ba? Hindi ka. Kick ka na! 😂",
-  "[name] Bakit mo binago pangalan ng group? Wala kang karapatang gawin yan. Out! 🤢",
-  "Huy [name]! Sino ka para magpalit ng pangalan ng group namin? Bobo ka talaga. 🤪",
-  "[name] Alam mo bang may consequences ang ginawa mo? Eto na — KICK! 😹",
-  "[name] Feeling boss ka ba? Wala kang dating dito. Alis na! 😀🖕",
-  "[name] Tanga ka ba? Binago mo pangalan ng group. Sana natulog ka na lang. 🤣",
-  "[name] Ikaw na magaling! Nagpalit ng group name... tapos KICKED! Haha bye! 🥊"
+  "[name] bobo to ah, sino nagsabi sayo na pwede palitan ang group gc?🤔",
+  "[name] kick kana tanga, tas subo mo utenko",
+  "[name], feeling admin ka ba? supa mo utenko",
+  "[name] bye bitch",
+  "[name] feeling admin si tanga, alis ka 👍🏿",
+  "[name] pinalitan nanaman, bye bitch 🫩",
+  "tanga kaba [name]? alam mo bang pinoprotektahan ko ang gc nato 🤔",
+  "[name] alis dog",
+  "bye [name] sana sinupa mo nalang ako"
 ];
 
 function getRandom(arr) {
