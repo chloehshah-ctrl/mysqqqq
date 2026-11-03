@@ -12,7 +12,7 @@ function isBotAdmin(senderID) {
   return adminList.some(id => String(id) === String(senderID));
 }
 
-function callApiMethod(api, method, args) {
+function callApiMethod(api, method, args, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = err => {
@@ -22,14 +22,13 @@ function callApiMethod(api, method, args) {
       if (err) reject(err);
       else resolve();
     };
-    const timer = setTimeout(() => finish(new Error(`${method} timed out`)), 15000);
+    const timer = setTimeout(() => finish(new Error(`${method} timed out`)), timeoutMs);
 
     try {
       const result = api[method](...args, finish);
       if (result && typeof result.then === 'function') {
         result.then(() => finish(), finish);
       } else if (api[method].length <= args.length) {
-        // Resolve methods that do not accept a callback.
         finish();
       }
     } catch (err) {
@@ -39,8 +38,6 @@ function callApiMethod(api, method, args) {
 }
 
 async function changeGroupTitle(api, threadID, title) {
-  // setTitle is the FCA method used elsewhere in this repo (including
-  // the thread-name protection handler); wait for its callback/result.
   const methods = [
     { name: 'setTitle', args: [title, threadID] },
     { name: 'changeThreadTitle', args: [title, threadID] },
@@ -56,30 +53,19 @@ async function changeGroupTitle(api, threadID, title) {
   throw new Error('Walang available na API para palitan ang pangalan ng group.');
 }
 
-function changeGroupPhoto(api, imagePath, threadID) {
-  const method = api.changeGroupImage || api.changeThreadImage;
-  if (typeof method !== 'function') {
-    throw new Error('Hindi suportado ng bot API ang pagpapalit ng group photo.');
+async function changeGroupPhoto(api, imageBuffer, threadID) {
+  // @dongdev/fca-unofficial expects (image, threadID, callback).
+  // Pass the image bytes directly instead of a ReadStream, which is not
+  // handled consistently by the installed FCA client.
+  if (typeof api.changeGroupImage === 'function') {
+    await callApiMethod(api, 'changeGroupImage', [imageBuffer, threadID], 30000);
+    return;
   }
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = err => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (err) reject(err);
-      else resolve();
-    };
-    const timer = setTimeout(() => finish(new Error('Nag-timeout ang pagpapalit ng group photo.')), 30000);
-
-    try {
-      const result = method.call(api, fs.createReadStream(imagePath), threadID, finish);
-      if (result && typeof result.then === 'function') result.then(() => finish(), finish);
-    } catch (err) {
-      finish(err);
-    }
-  });
+  if (typeof api.changeThreadImage === 'function') {
+    await callApiMethod(api, 'changeThreadImage', [imageBuffer, threadID], 30000);
+    return;
+  }
+  throw new Error('Walang changeGroupImage/changeThreadImage method ang FCA API na naka-install.');
 }
 
 async function downloadImage(url, filePath) {
@@ -100,15 +86,17 @@ async function downloadImage(url, filePath) {
   });
   const contentType = String(response.headers['content-type'] || '').toLowerCase();
   if (!contentType.startsWith('image/')) throw new Error('Ang nireply na attachment ay hindi image.');
-  if (response.data.byteLength > MAX_IMAGE_BYTES) throw new Error('Lampas 8 MB ang image.');
+  const imageBuffer = Buffer.from(response.data);
+  if (imageBuffer.length > MAX_IMAGE_BYTES) throw new Error('Lampas 8 MB ang image.');
 
-  await fs.writeFile(filePath, Buffer.from(response.data));
+  await fs.writeFile(filePath, imageBuffer);
+  return imageBuffer;
 }
 
 module.exports = {
   config: {
     name: 'set',
-    version: '1.0.1',
+    version: '1.0.2',
     author: 'Siegfried Samá',
     countDown: 5,
     role: 2,
@@ -130,6 +118,7 @@ module.exports = {
         await changeGroupTitle(api, threadID, title);
       } catch (err) {
         console.error('[set] Group title update failed:', err?.message || err);
+        return message.reply('❌ Hindi napalitan ang group name. Tingnan ang bot log para sa error.');
       }
       return;
     }
@@ -139,16 +128,18 @@ module.exports = {
       typeof item?.url === 'string'
     );
     if (!attachment) {
-      return message.reply('Gamitin ang `set <bagong pangalan>`, o mag-reply sa isang larawan gamit ang `set`.');
+      return message.reply('Mag-reply sa image gamit ang `set`, o gamitin ang `set <bagong pangalan>`.');
     }
 
     await fs.ensureDir(CACHE_DIR);
     const imagePath = path.join(CACHE_DIR, `set_group_photo_${threadID}_${Date.now()}.img`);
     try {
-      await downloadImage(attachment.url, imagePath);
-      await changeGroupPhoto(api, imagePath, threadID);
+      const imageBuffer = await downloadImage(attachment.url, imagePath);
+      await changeGroupPhoto(api, imageBuffer, threadID);
+      // Silent on success, as requested.
     } catch (err) {
-      console.error('[set] Group photo update failed:', err?.message || err);
+      console.error('[set] Group photo update failed:', err?.stack || err);
+      return message.reply(`❌ Hindi napalitan ang group photo: ${err?.message || 'may error sa API'}`);
     } finally {
       await fs.remove(imagePath).catch(() => {});
     }
