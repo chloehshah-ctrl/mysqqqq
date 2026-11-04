@@ -26,6 +26,11 @@ function getAdminIDs(threadData) {
   }).filter(Boolean);
 }
 
+function isBotAdmin(userID) {
+  const adminIDs = global.GoatBot?.config?.adminBot || [];
+  return adminIDs.some(id => String(id) === String(userID));
+}
+
 function getImageUrl(logMessageData) {
   return logMessageData?.image?.url || logMessageData?.url || logMessageData?.imageSrc || null;
 }
@@ -103,7 +108,7 @@ async function roastAndKick(api, threadID, userID, name, roastPool) {
 module.exports = {
   config: {
     name: "antispamprotect",
-    version: "1.0.3",
+    version: "1.0.4",
     author: "Siegfried Samá",
     category: "events"
   },
@@ -137,8 +142,9 @@ module.exports = {
       const threadData = await threadsData.get(threadID);
       const cached = savedThreadInfo.get(threadKey) || {};
 
-      // Changes made by the bot are allowed and become the new rollback baseline.
-      if (!authorID || authorID === botID) {
+      // Bot account and configured bot admins can change the name/photo safely.
+      // Save their changes as the new rollback baseline and never kick them.
+      if (!authorID || authorID === botID || isBotAdmin(authorID)) {
         if (logMessageType === 'log:thread-name') {
           updateSavedThreadInfo(threadID, { threadName: logMessageData?.name || null });
         } else {
