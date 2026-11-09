@@ -29,61 +29,62 @@ function pickReplyText(body) {
   return null;
 }
 
-function shouldTriggerQuantom(body) {
-  return typeof body === 'string' && /\bquantom\b/i.test(body);
+function shouldTriggerIris(body) {
+  return typeof body === 'string' && /\biris\b/i.test(body);
 }
 
 function registerQuestion(api, threadID, senderID, questionID) {
   if (!global.GoatBot?.onReply) return;
   global.GoatBot.onReply.set(String(questionID), {
-    commandName: 'quantom',
+    commandName: 'iris',
     author: String(senderID),
     messageID: String(questionID),
     threadID: String(threadID)
   });
 }
 
+async function runIrisFlow({ api, event }) {
+  reactToMessage(api, event);
+  if (!isAdmin(event.senderID)) return;
+
+  const key = getFlowKey(event);
+  const state = adminState.get(key) || { step: 0, questionMessageID: null };
+
+  if (state.step === 0) {
+    adminState.set(key, { step: 1, questionMessageID: event.messageID });
+    const info = await api.sendMessage('yohooo', event.threadID, event.messageID);
+    if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
+    return;
+  }
+
+  adminState.set(key, { step: 2, questionMessageID: event.messageID });
+  const info = await api.sendMessage('may kukulatain ba ako boss?', event.threadID, event.messageID);
+  if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
+}
+
 module.exports = {
   config: {
-    name: 'quantom',
+    name: 'iris',
     aliases: ['kuwantom', 'qntm'],
-    version: '1.1.0',
+    version: '1.1.1',
     author: 'Siegfried Samá',
     countDown: 0,
     role: 0,
     category: 'fun',
-    description: { en: 'Admin keyword-triggered quantom flow' },
+    description: { en: 'Admin keyword-triggered iris flow' },
     guide: { en: '{pn} iris' }
   },
 
   onChat: async function ({ api, event }) {
     if (!event || !event.body || !shouldTriggerIris(event.body)) return;
-
-    reactToMessage(api, event);
-
-    if (!isAdmin(event.senderID)) return;
-
-    const key = getFlowKey(event);
-    const state = adminState.get(key) || { step: 0, questionMessageID: null };
-
-    if (state.step === 0) {
-      adminState.set(key, { step: 1, questionMessageID: event.messageID });
-      const info = await api.sendMessage('yohooo', event.threadID, event.messageID);
-      if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
-      return;
-    }
-
-    adminState.set(key, { step: 2, questionMessageID: event.messageID });
-    const info = await api.sendMessage('may kukulatain ba ako boss?', event.threadID, event.messageID);
-    if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
+    await runIrisFlow({ api, event });
   },
 
   onReply: async function ({ api, event, Reply }) {
     if (!event || !event.body || !Reply || String(Reply.commandName || '') !== 'iris') return;
     if (String(event.senderID) !== String(Reply.author)) return;
 
-    const rawBody = event.body || '';
-    const answer = pickReplyText(rawBody);
+    const answer = pickReplyText(event.body);
     if (!answer) return;
 
     const key = getFlowKey(event);
@@ -104,25 +105,9 @@ module.exports = {
 
   onStart: async function ({ api, event, args }) {
     const body = (args || []).join(' ').trim();
-    if (!body || !shouldTriggerQuantom(body)) return;
-
-    reactToMessage(api, event);
-
-    if (!isAdmin(event.senderID)) return;
-
-    const key = getFlowKey(event);
-    const state = adminState.get(key) || { step: 0, questionMessageID: null };
-
-    if (state.step === 0) {
-      adminState.set(key, { step: 1, questionMessageID: event.messageID });
-      const info = await api.sendMessage('yohooo', event.threadID, event.messageID);
-      if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
-      return;
-    }
-
-    adminState.set(key, { step: 2, questionMessageID: event.messageID });
-    const info = await api.sendMessage('may kukulatain ba ako boss?', event.threadID, event.messageID);
-    if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
+    // The command itself (iris) should run without needing to repeat the keyword.
+    if (body && !shouldTriggerIris(body)) return;
+    await runIrisFlow({ api, event });
   }
 };
 
