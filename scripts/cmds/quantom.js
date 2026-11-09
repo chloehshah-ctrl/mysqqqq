@@ -53,11 +53,11 @@ module.exports = {
     role: 0,
     category: 'fun',
     description: { en: 'Admin keyword-triggered quantom flow' },
-    guide: { en: '{pn} quantom' }
+    guide: { en: '{pn} iris' }
   },
 
   onChat: async function ({ api, event }) {
-    if (!event || !event.body || !shouldTriggerQuantom(event.body)) return;
+    if (!event || !event.body || !shouldTriggerIris(event.body)) return;
 
     reactToMessage(api, event);
 
@@ -79,7 +79,7 @@ module.exports = {
   },
 
   onReply: async function ({ api, event, Reply }) {
-    if (!event || !event.body || !Reply || String(Reply.commandName || '') !== 'quantom') return;
+    if (!event || !event.body || !Reply || String(Reply.commandName || '') !== 'iris') return;
     if (String(event.senderID) !== String(Reply.author)) return;
 
     const rawBody = event.body || '';
