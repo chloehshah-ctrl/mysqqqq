@@ -33,7 +33,7 @@ function shouldTriggerIris(body) {
   return typeof body === 'string' && /\biris\b/i.test(body);
 }
 
-function registerQuestion(api, threadID, senderID, questionID) {
+function registerQuestion(threadID, senderID, questionID) {
   if (!global.GoatBot?.onReply) return;
   global.GoatBot.onReply.set(String(questionID), {
     commandName: 'iris',
@@ -53,20 +53,20 @@ async function runIrisFlow({ api, event }) {
   if (state.step === 0) {
     adminState.set(key, { step: 1, questionMessageID: event.messageID });
     const info = await api.sendMessage('yohooo', event.threadID, event.messageID);
-    if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
+    if (info?.messageID) registerQuestion(event.threadID, event.senderID, info.messageID);
     return;
   }
 
   adminState.set(key, { step: 2, questionMessageID: event.messageID });
   const info = await api.sendMessage('may kukulatain ba ako boss?', event.threadID, event.messageID);
-  if (info?.messageID) registerQuestion(api, event.threadID, event.senderID, info.messageID);
+  if (info?.messageID) registerQuestion(event.threadID, event.senderID, info.messageID);
 }
 
 module.exports = {
   config: {
     name: 'iris',
     aliases: ['kuwantom', 'qntm'],
-    version: '1.1.1',
+    version: '1.1.2',
     author: 'Siegfried Samá',
     countDown: 0,
     role: 0,
@@ -75,10 +75,8 @@ module.exports = {
     guide: { en: '{pn} iris' }
   },
 
-  onChat: async function ({ api, event }) {
-    if (!event || !event.body || !shouldTriggerIris(event.body)) return;
-    await runIrisFlow({ api, event });
-  },
+  // Deliberately no onChat handler: the command is processed by onStart only.
+  // Having both onChat and onStart caused the command message to run the flow twice.
 
   onReply: async function ({ api, event, Reply }) {
     if (!event || !event.body || !Reply || String(Reply.commandName || '') !== 'iris') return;
@@ -105,7 +103,6 @@ module.exports = {
 
   onStart: async function ({ api, event, args }) {
     const body = (args || []).join(' ').trim();
-    // The command itself (iris) should run without needing to repeat the keyword.
     if (body && !shouldTriggerIris(body)) return;
     await runIrisFlow({ api, event });
   }
