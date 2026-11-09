@@ -1,6 +1,7 @@
 'use strict';
 
 const adminState = new Map();
+const reactedMessages = new Map();
 
 function getAdminList() {
   const list = global.GoatBot?.config?.adminBot || global.config?.adminBot || [];
@@ -15,11 +16,31 @@ function getFlowKey(event) {
   return `${event?.threadID || '0'}:${event?.senderID || '0'}`;
 }
 
+function shouldTriggerIris(body) {
+  return typeof body === 'string' && /\biris\b/i.test(body);
+}
+
 function reactToMessage(api, event) {
+  const messageID = String(event?.messageID || '');
+  const threadID = String(event?.threadID || '');
+  if (!messageID || !threadID || typeof api?.setMessageReaction !== 'function') return;
+
+  // onChat and command dispatch can both see the same message; avoid duplicate reactions.
+  if (reactedMessages.has(messageID)) return;
+  reactedMessages.set(messageID, Date.now());
+  setTimeout(() => reactedMessages.delete(messageID), 30000);
+
   try {
-    const p = api?.setMessageReaction?.('🥷🏿', event?.messageID, () => {}, true);
-    if (p?.catch) p.catch(() => {});
-  } catch (_) {}
+    // FCA API signature: reaction, message ID, thread ID, callback, forceCustomReaction.
+    const result = api.setMessageReaction('🥷🏿', messageID, threadID, err => {
+      if (err) console.error('[iris] Reaction failed:', err?.message || err);
+    }, true);
+    if (result && typeof result.catch === 'function') {
+      result.catch(err => console.error('[iris] Reaction failed:', err?.message || err));
+    }
+  } catch (err) {
+    console.error('[iris] Reaction failed:', err?.message || err);
+  }
 }
 
 function pickReplyText(body) {
@@ -27,10 +48,6 @@ function pickReplyText(body) {
   if (/\bmeron\b/i.test(text)) return 'meron';
   if (/\bwala\b/i.test(text)) return 'wala';
   return null;
-}
-
-function shouldTriggerIris(body) {
-  return typeof body === 'string' && /\biris\b/i.test(body);
 }
 
 function registerQuestion(threadID, senderID, questionID) {
@@ -44,7 +61,6 @@ function registerQuestion(threadID, senderID, questionID) {
 }
 
 async function runIrisFlow({ api, event }) {
-  reactToMessage(api, event);
   if (!isAdmin(event.senderID)) return;
 
   const key = getFlowKey(event);
@@ -66,7 +82,7 @@ module.exports = {
   config: {
     name: 'iris',
     aliases: ['kuwantom', 'qntm'],
-    version: '1.1.2',
+    version: '1.1.3',
     author: 'Siegfried Samá',
     countDown: 0,
     role: 0,
@@ -75,8 +91,11 @@ module.exports = {
     guide: { en: '{pn} iris' }
   },
 
-  // Deliberately no onChat handler: the command is processed by onStart only.
-  // Having both onChat and onStart caused the command message to run the flow twice.
+  // React to the keyword from any user; do not run the admin-only conversation here.
+  onChat: async function ({ api, event }) {
+    if (!event || !shouldTriggerIris(event.body)) return;
+    reactToMessage(api, event);
+  },
 
   onReply: async function ({ api, event, Reply }) {
     if (!event || !event.body || !Reply || String(Reply.commandName || '') !== 'iris') return;
@@ -85,17 +104,12 @@ module.exports = {
     const answer = pickReplyText(event.body);
     if (!answer) return;
 
-    const key = getFlowKey(event);
-    adminState.delete(key);
-
-    if (global.GoatBot?.onReply) {
-      global.GoatBot.onReply.delete(String(Reply.messageID));
-    }
+    adminState.delete(getFlowKey(event));
+    if (global.GoatBot?.onReply) global.GoatBot.onReply.delete(String(Reply.messageID));
 
     if (answer === 'meron') {
       return api.sendMessage('sige boss, command mo lang ako wlang tulugan kami', event.threadID, event.messageID);
     }
-
     if (answer === 'wala') {
       return api.sendMessage('pasabi lang kong may kukulatain', event.threadID, event.messageID);
     }
