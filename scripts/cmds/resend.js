@@ -3,7 +3,6 @@
 const axios = require('axios');
 const { Readable } = require('stream');
 
-const RESEND_SETTING = 'data.resend';
 const MAX_CACHED_MESSAGES = 500;
 const MAX_ATTACHMENTS_PER_MESSAGE = 3;
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
@@ -59,7 +58,7 @@ async function sendRecalledMessage(api, event, saved, usersData) {
   try {
     name = await usersData.getName(saved.senderID) || name;
   } catch (_) {
-    // The message can still be reposted if the user's display name is unavailable.
+    // Continue if the sender's display name is unavailable.
   }
 
   const bodyParts = [`↩️ ${name} unsent a message.`];
@@ -82,40 +81,18 @@ module.exports = {
   config: {
     name: 'resend',
     aliases: [],
-    version: '2.1.0',
+    version: '2.2.0',
     author: 'Siegfried Samá',
-    countDown: 3,
-    role: 1,
-    description: { en: 'Enable or disable reposting recalled messages in this group.' },
+    countDown: 0,
+    role: 0,
+    description: { en: 'Automatically repost messages when they are unsent.' },
     category: 'box chat',
-    guide: {
-      en: '{pn} on — enable reposting recalled messages in this group\n{pn} off — disable it\n{pn} status — show the current setting'
-    }
-  },
-
-  onStart: async function ({ args, event, threadsData, message }) {
-    const option = String(args?.[0] || 'status').toLowerCase();
-    if (!['on', 'off', 'status'].includes(option)) {
-      return message.reply('Gamitin: resend on, resend off, o resend status.');
-    }
-
-    const threadID = event?.threadID;
-    if (!threadID) return message.reply('Hindi makita ang group/thread para sa command na ito.');
-
-    if (option === 'status') {
-      const enabled = await threadsData.get(threadID, RESEND_SETTING, false);
-      return message.reply(`Resend sa group na ito ay ${enabled ? 'ON' : 'OFF'}.`);
-    }
-
-    const enabled = option === 'on';
-    await threadsData.set(threadID, enabled, RESEND_SETTING);
-    return message.reply(enabled
-      ? '✅ Naka-on ang resend sa group na ito. Maaaring ma-repost ang mga mensaheng i-unsend ng kahit sinong member.'
-      : '✅ Naka-off ang resend sa group na ito.');
+    guide: { en: 'Automatic. No command needed.' }
   },
 
   // GoatBot invokes onAnyEvent for incoming messages and message_unsend events.
-  onAnyEvent: async function ({ api, event, threadsData, usersData }) {
+  // Reposting is active by default; no command or per-thread setting is needed.
+  onAnyEvent: async function ({ api, event, usersData }) {
     if (!event?.threadID || !event?.messageID || !event?.senderID) return;
     pruneCache();
 
@@ -124,48 +101,43 @@ module.exports = {
     const senderID = String(event.senderID);
     const eventType = String(event.type || '').toLowerCase();
 
-    try {
-      const enabled = await threadsData.get(event.threadID, RESEND_SETTING, false);
-      if (!enabled) {
-        if (eventType === 'message_unsend') cachedMessages.delete(messageID);
-        return;
-      }
+    if (eventType === 'message_unsend') {
+      const saved = cachedMessages.get(messageID);
+      cachedMessages.delete(messageID);
+      if (!saved || saved.senderID !== senderID || saved.threadID !== threadID) return;
 
-      if (eventType === 'message_unsend') {
-        const saved = cachedMessages.get(messageID);
-        cachedMessages.delete(messageID);
-        if (!saved || saved.senderID !== senderID || saved.threadID !== threadID) return;
+      try {
         await sendRecalledMessage(api, event, saved, usersData);
-        return;
+      } catch (err) {
+        console.error('[resend] Failed to repost recalled message:', err?.message || err);
       }
-
-      if (eventType && !['message', 'message_reply'].includes(eventType)) return;
-      if (event.logMessageType || senderID === String(api.getCurrentUserID?.() || '')) return;
-
-      const body = String(event.body || '');
-      const attachments = Array.isArray(event.attachments) ? event.attachments : [];
-      if (!body && !attachments.length) return;
-
-      const cachedAttachments = [];
-      for (const attachment of attachments.slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
-        try {
-          const cached = await cacheAttachment(attachment);
-          if (cached) cachedAttachments.push(cached);
-        } catch (err) {
-          console.warn('[resend] Could not cache an attachment:', err?.message || err);
-        }
-      }
-
-      cachedMessages.set(messageID, {
-        senderID,
-        threadID,
-        body,
-        attachments: cachedAttachments,
-        createdAt: Date.now()
-      });
-      pruneCache();
-    } catch (err) {
-      console.error('[resend] Failed to process message event:', err?.message || err);
+      return;
     }
+
+    if (eventType && !['message', 'message_reply'].includes(eventType)) return;
+    if (event.logMessageType || senderID === String(api.getCurrentUserID?.() || '')) return;
+
+    const body = String(event.body || '');
+    const attachments = Array.isArray(event.attachments) ? event.attachments : [];
+    if (!body && !attachments.length) return;
+
+    const cachedAttachments = [];
+    for (const attachment of attachments.slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
+      try {
+        const cached = await cacheAttachment(attachment);
+        if (cached) cachedAttachments.push(cached);
+      } catch (err) {
+        console.warn('[resend] Could not cache an attachment:', err?.message || err);
+      }
+    }
+
+    cachedMessages.set(messageID, {
+      senderID,
+      threadID,
+      body,
+      attachments: cachedAttachments,
+      createdAt: Date.now()
+    });
+    pruneCache();
   }
 };
