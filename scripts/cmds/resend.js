@@ -3,16 +3,12 @@
 const axios = require('axios');
 const { Readable } = require('stream');
 
-const OPT_IN_PATH = 'data.resendOptInUsers';
+const RESEND_SETTING = 'data.resend';
 const MAX_CACHED_MESSAGES = 500;
 const MAX_ATTACHMENTS_PER_MESSAGE = 3;
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const cachedMessages = new Map();
-
-function isEnabledForThreadUsers(value, senderID) {
-  return Array.isArray(value) && value.some(id => String(id) === String(senderID));
-}
 
 function isAllowedAttachmentUrl(rawUrl) {
   try {
@@ -43,6 +39,7 @@ async function cacheAttachment(attachment) {
   const response = await axios.get(attachment.url, {
     responseType: 'arraybuffer',
     timeout: 12000,
+    maxRedirects: 0,
     maxContentLength: MAX_ATTACHMENT_BYTES,
     maxBodyLength: MAX_ATTACHMENT_BYTES,
     headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -58,7 +55,13 @@ async function cacheAttachment(attachment) {
 }
 
 async function sendRecalledMessage(api, event, saved, usersData) {
-  const name = await usersData.getName(saved.senderID).catch(() => 'A user');
+  let name = 'A user';
+  try {
+    name = await usersData.getName(saved.senderID) || name;
+  } catch (_) {
+    // The message can still be reposted if the user's display name is unavailable.
+  }
+
   const bodyParts = [`↩️ ${name} unsent a message.`];
   if (saved.body) bodyParts.push(saved.body);
 
@@ -78,70 +81,70 @@ async function sendRecalledMessage(api, event, saved, usersData) {
 module.exports = {
   config: {
     name: 'resend',
-    version: '2.0.0',
+    aliases: [],
+    version: '2.1.0',
     author: 'Siegfried Samá',
     countDown: 3,
-    role: 0,
-    description: { en: 'Opt in/out of reposting your own unsent messages in this group.' },
+    role: 1,
+    description: { en: 'Enable or disable reposting recalled messages in this group.' },
     category: 'box chat',
-    guide: { en: '{pn} on — allow the bot to repost your own unsent messages\n{pn} off — disable it' }
+    guide: {
+      en: '{pn} on — enable reposting recalled messages in this group\n{pn} off — disable it\n{pn} status — show the current setting'
+    }
   },
 
   onStart: async function ({ args, event, threadsData, message }) {
-    const option = String(args?.[0] || '').toLowerCase();
-    if (!['on', 'off'].includes(option)) {
-      return message.reply('Gamitin ang resend on para mag-opt in sa sarili mong unsent messages, o resend off para mag-opt out.');
+    const option = String(args?.[0] || 'status').toLowerCase();
+    if (!['on', 'off', 'status'].includes(option)) {
+      return message.reply('Gamitin: resend on, resend off, o resend status.');
     }
 
-    const threadID = event.threadID;
-    const senderID = String(event.senderID);
-    const optedIn = await threadsData.get(threadID, OPT_IN_PATH, []);
-    const next = new Set(Array.isArray(optedIn) ? optedIn.map(String) : []);
+    const threadID = event?.threadID;
+    if (!threadID) return message.reply('Hindi makita ang group/thread para sa command na ito.');
 
-    if (option === 'on') next.add(senderID);
-    else next.delete(senderID);
+    if (option === 'status') {
+      const enabled = await threadsData.get(threadID, RESEND_SETTING, false);
+      return message.reply(`Resend sa group na ito ay ${enabled ? 'ON' : 'OFF'}.`);
+    }
 
-    await threadsData.set(threadID, [...next], OPT_IN_PATH);
-    return message.reply(option === 'on'
-      ? '✅ Naka-on: ire-repost lang ng bot ang sarili mong unsent messages sa group na ito.'
-      : '✅ Naka-off: hindi na ire-repost ng bot ang sarili mong unsent messages.');
+    const enabled = option === 'on';
+    await threadsData.set(threadID, enabled, RESEND_SETTING);
+    return message.reply(enabled
+      ? '✅ Naka-on ang resend sa group na ito. Maaaring ma-repost ang mga mensaheng i-unsend ng kahit sinong member.'
+      : '✅ Naka-off ang resend sa group na ito.');
   },
 
-  // Cache only messages from users who explicitly opted in. This hook receives
-  // both normal messages and message_unsend events in this bot's event loader.
+  // GoatBot invokes onAnyEvent for incoming messages and message_unsend events.
   onAnyEvent: async function ({ api, event, threadsData, usersData }) {
     if (!event?.threadID || !event?.messageID || !event?.senderID) return;
     pruneCache();
 
+    const threadID = String(event.threadID);
     const messageID = String(event.messageID);
     const senderID = String(event.senderID);
     const eventType = String(event.type || '').toLowerCase();
 
-    if (eventType === 'message_unsend') {
-      const saved = cachedMessages.get(messageID);
-      cachedMessages.delete(messageID);
-      if (!saved || saved.senderID !== senderID || saved.threadID !== String(event.threadID)) return;
-
-      try {
-        const optedIn = await threadsData.get(event.threadID, OPT_IN_PATH, []);
-        if (!isEnabledForThreadUsers(optedIn, senderID)) return;
-        await sendRecalledMessage(api, event, saved, usersData);
-      } catch (err) {
-        console.error('[resend] Failed to repost opted-in unsent message:', err?.message || err);
-      }
-      return;
-    }
-
-    if (eventType && !['message', 'message_reply'].includes(eventType)) return;
-    if (event.logMessageType) return;
-
-    const body = String(event.body || '');
-    const attachments = Array.isArray(event.attachments) ? event.attachments : [];
-    if (!body && !attachments.length) return;
-
     try {
-      const optedIn = await threadsData.get(event.threadID, OPT_IN_PATH, []);
-      if (!isEnabledForThreadUsers(optedIn, senderID)) return;
+      const enabled = await threadsData.get(event.threadID, RESEND_SETTING, false);
+      if (!enabled) {
+        if (eventType === 'message_unsend') cachedMessages.delete(messageID);
+        return;
+      }
+
+      if (eventType === 'message_unsend') {
+        const saved = cachedMessages.get(messageID);
+        cachedMessages.delete(messageID);
+        if (!saved || saved.senderID !== senderID || saved.threadID !== threadID) return;
+        await sendRecalledMessage(api, event, saved, usersData);
+        return;
+      }
+
+      if (eventType && !['message', 'message_reply'].includes(eventType)) return;
+      if (event.logMessageType || senderID === String(api.getCurrentUserID?.() || '')) return;
+
+      const body = String(event.body || '');
+      const attachments = Array.isArray(event.attachments) ? event.attachments : [];
+      if (!body && !attachments.length) return;
 
       const cachedAttachments = [];
       for (const attachment of attachments.slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
@@ -155,14 +158,14 @@ module.exports = {
 
       cachedMessages.set(messageID, {
         senderID,
-        threadID: String(event.threadID),
+        threadID,
         body,
         attachments: cachedAttachments,
         createdAt: Date.now()
       });
       pruneCache();
     } catch (err) {
-      console.error('[resend] Failed to cache opted-in message:', err?.message || err);
+      console.error('[resend] Failed to process message event:', err?.message || err);
     }
   }
 };
