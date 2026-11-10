@@ -61,7 +61,7 @@ async function sendRecalledMessage(api, event, saved, usersData) {
     // Continue if the sender's display name is unavailable.
   }
 
-  const bodyParts = [`↩️ ${name} unsent a message.`];
+  const bodyParts = [`${name} unsent a message.`];
   if (saved.body) bodyParts.push(saved.body);
 
   const payload = { body: bodyParts.join('\n\n') };
