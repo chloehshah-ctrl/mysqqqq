@@ -2,12 +2,28 @@
 
 const axios = require('axios');
 const { Readable } = require('stream');
+const path = require('path');
 
 const MAX_CACHED_MESSAGES = 500;
 const MAX_ATTACHMENTS_PER_MESSAGE = 3;
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const cachedMessages = new Map();
+
+const MIME_EXTENSIONS = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a',
+  'audio/ogg': '.ogg',
+  'audio/wav': '.wav'
+};
 
 function isAllowedAttachmentUrl(rawUrl) {
   try {
@@ -32,13 +48,44 @@ function pruneCache() {
   }
 }
 
+function cleanFilename(value) {
+  return path.basename(String(value || '')).replace(/[\\/\0]/g, '_');
+}
+
+function getAttachmentFilename(attachment, contentType) {
+  const candidates = [attachment.filename, attachment.name];
+  for (const candidate of candidates) {
+    const filename = cleanFilename(candidate);
+    if (filename && path.extname(filename)) return filename;
+  }
+
+  try {
+    const urlFilename = cleanFilename(path.basename(new URL(attachment.url).pathname));
+    if (urlFilename && path.extname(urlFilename)) return urlFilename;
+  } catch (_) {
+    // Use MIME/type metadata when the URL has no usable filename.
+  }
+
+  const mimeType = String(contentType || '').split(';')[0].trim().toLowerCase();
+  const extension = MIME_EXTENSIONS[mimeType];
+  const kind = String(attachment.type || '').toLowerCase();
+  const fallbackExtension = extension
+    || (kind.includes('photo') || kind.includes('image') ? '.jpg' : null)
+    || (kind.includes('video') ? '.mp4' : null)
+    || (kind.includes('audio') ? '.mp3' : null)
+    || '.dat';
+
+  return `attachment_${Date.now()}${fallbackExtension}`;
+}
+
 async function cacheAttachment(attachment) {
   if (!attachment?.url || !isAllowedAttachmentUrl(attachment.url)) return null;
 
+  // Follow Facebook CDN redirects so the actual media bytes are downloaded and
+  // re-uploaded by the bot, rather than sending the original URL as a link.
   const response = await axios.get(attachment.url, {
     responseType: 'arraybuffer',
     timeout: 12000,
-    maxRedirects: 0,
     maxContentLength: MAX_ATTACHMENT_BYTES,
     maxBodyLength: MAX_ATTACHMENT_BYTES,
     headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -46,10 +93,16 @@ async function cacheAttachment(attachment) {
   const buffer = Buffer.from(response.data);
   if (!buffer.length || buffer.length > MAX_ATTACHMENT_BYTES) return null;
 
+  const contentType = String(
+    attachment.contentType
+      || response.headers['content-type']
+      || ''
+  ).split(';')[0].trim().toLowerCase();
+
   return {
     buffer,
-    filename: String(attachment.filename || attachment.name || `attachment_${Date.now()}`).replace(/[\\/\0]/g, '_'),
-    contentType: String(attachment.contentType || response.headers['content-type'] || 'application/octet-stream')
+    filename: getAttachmentFilename(attachment, contentType),
+    contentType: contentType || 'application/octet-stream'
   };
 }
 
@@ -68,7 +121,10 @@ async function sendRecalledMessage(api, event, saved, usersData) {
   if (saved.attachments.length) {
     payload.attachment = saved.attachments.map(item => {
       const stream = Readable.from([item.buffer]);
+      // FCA uses the stream path as the uploaded filename; preserve the real
+      // media extension so photos/videos render inline instead of as .bin files.
       stream.path = item.filename;
+      stream.name = item.filename;
       stream.contentType = item.contentType;
       return stream;
     });
@@ -81,7 +137,7 @@ module.exports = {
   config: {
     name: 'resend',
     aliases: [],
-    version: '2.2.1',
+    version: '2.2.2',
     author: 'Siegfried Samá',
     countDown: 0,
     role: 0,
