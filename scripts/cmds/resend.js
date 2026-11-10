@@ -81,7 +81,7 @@ module.exports = {
   config: {
     name: 'resend',
     aliases: [],
-    version: '2.2.0',
+    version: '2.2.1',
     author: 'Siegfried Samá',
     countDown: 0,
     role: 0,
@@ -90,8 +90,11 @@ module.exports = {
     guide: { en: 'Automatic. No command needed.' }
   },
 
+  // GoatBot requires every command module to define onStart or ST to load it.
+  // The actual automatic behavior runs in onAnyEvent; there is no user command.
+  onStart: async function () {},
+
   // GoatBot invokes onAnyEvent for incoming messages and message_unsend events.
-  // Reposting is active by default; no command or per-thread setting is needed.
   onAnyEvent: async function ({ api, event, usersData }) {
     if (!event?.threadID || !event?.messageID || !event?.senderID) return;
     pruneCache();
